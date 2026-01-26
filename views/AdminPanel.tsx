@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { User, UserRole, Gender, LeaveCategory, WarningRule, WorkflowGroup, UserStatsConfig, GenderRestriction, JobTitleRule, WarningOperator, TimeWindowType, LeaveRequest, LeaveType, OvertimeSettlementRecord } from '../types';
-import { Users, Search, Plus, Edit2, Trash2, X, Save, GitFork, BarChart2, FileText, AlertTriangle, Database, Download, Upload, Check, Shield, Key, AlertCircle, FileDiff, Info, CheckCircle2, UserPlus, RefreshCcw, Layers, Briefcase, ArrowRight, Settings, Sliders, Eye, Palette, BellRing, UserCheck, ShieldCheck, Filter, ChevronRight, Tags, Zap, FastForward, CalendarDays, ArrowLeft, ClipboardCheck, ArrowUpRight, BadgeAlert, Settings2, Sparkles, History, Calendar, AlertOctagon, GraduationCap, Building2, UserCog, ShieldAlert, ToggleRight, ToggleLeft, DollarSign, CalendarPlus, CalendarX, ChevronDown } from 'lucide-react';
+import { Users, Search, Plus, Edit2, Trash2, X, Save, GitFork, BarChart2, FileText, AlertTriangle, Database, Download, Upload, Check, Shield, Key, AlertCircle, FileDiff, Info, CheckCircle2, UserPlus, RefreshCcw, Layers, Briefcase, ArrowRight, Settings, Sliders, Eye, Palette, BellRing, UserCheck, ShieldCheck, Filter, ChevronRight, Tags, Zap, FastForward, CalendarDays, ArrowLeft, ClipboardCheck, ArrowUpRight, BadgeAlert, Settings2, Sparkles, History, Calendar, AlertOctagon, GraduationCap, Building2, UserCog, ShieldAlert, ToggleRight, ToggleLeft, DollarSign, CalendarPlus, CalendarX, ChevronDown, Rocket } from 'lucide-react';
 import { ROLE_LABELS } from '../constants';
 // @ts-ignore
 import * as XLSX from 'xlsx';
@@ -32,13 +32,14 @@ const UserTab = ({ workflowGroups }: { workflowGroups: WorkflowGroup[] }) => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
-  // --- 新增：密碼重置狀態 ---
+  // --- 密碼重置狀態 ---
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
   const [userToReset, setUserToReset] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
-  // --- 新增：批次管理狀態 ---
+  // --- 批次管理狀態 ---
   const [isBatchDeleteConfirmOpen, setIsBatchDeleteConfirmOpen] = useState(false);
+  const [isBatchIncrementModalOpen, setIsBatchIncrementModalOpen] = useState(false);
   const [batchYearToDelete, setBatchYearToDelete] = useState<number>(new Date().getFullYear());
   const [allAvailableYears, setAllAvailableYears] = useState<number[]>([]);
 
@@ -103,35 +104,38 @@ const UserTab = ({ workflowGroups }: { workflowGroups: WorkflowGroup[] }) => {
       }
   };
 
-  // --- 批次操作邏輯 ---
-  const handleBatchIncrement = async () => {
-      if (!window.confirm('此操作將會：\n1. 根據每個帳號的「最後一年度」額度\n2. 自動新增「下一年度」額度 (+1天)\n3. 最大上限為 30 天\n\n確定要對全體人員執行嗎？')) return;
-      
+  // --- 批次增額實作邏輯 ---
+  const executeBatchIncrement = async () => {
       setLoading(true);
+      setIsBatchIncrementModalOpen(false);
       try {
           const updatedUsers = users.map(u => {
               const annual = { ...u.quota.annual };
               const existingYears = Object.keys(annual).map(Number).sort((a, b) => b - a);
               
               if (existingYears.length > 0) {
+                  // 取得目前資料庫中最大的年份 (作為上一年度)
                   const lastYear = existingYears[0];
                   const nextYear = lastYear + 1;
-                  const lastQuota = annual[lastYear];
-                  // 新增一天，最高30天
-                  annual[nextYear] = Math.min(30, lastQuota + 1);
+                  const lastQuotaValue = annual[lastYear] || 0;
+                  
+                  // 自動增額：上一年度天數 + 1，上限 30 天
+                  annual[nextYear] = Math.min(30, lastQuotaValue + 1);
               } else {
-                  // 若完全沒設過，預設今年 7 天
-                  annual[new Date().getFullYear()] = 7;
+                  // 若該帳號完全沒設定過特休，初始化「今年度」為基礎 7 天
+                  const thisYear = new Date().getFullYear();
+                  annual[thisYear] = 7;
               }
               
               return { ...u, quota: { ...u.quota, annual } };
           });
           
           await db.saveUsers(updatedUsers);
-          alert('批次自動增額完成！');
+          alert('全體人員特休批次增額處理完成！');
           loadUsers();
       } catch (err) {
-          alert('操作失敗：' + err);
+          alert('批次處理失敗：' + err);
+      } finally {
           setLoading(false);
       }
   };
@@ -191,7 +195,7 @@ const UserTab = ({ workflowGroups }: { workflowGroups: WorkflowGroup[] }) => {
     } catch (err: any) { alert(`儲存失敗: ${err.message}`); }
   };
 
-  if (loading) return <div className="p-12 text-center text-slate-400 font-bold animate-pulse">載入使用者中...</div>;
+  if (loading && users.length === 0) return <div className="p-12 text-center text-slate-400 font-bold animate-pulse">載入使用者中...</div>;
 
   const filtered = users.filter(u => 
     (u.name || '').includes(searchTerm) || 
@@ -213,9 +217,9 @@ const UserTab = ({ workflowGroups }: { workflowGroups: WorkflowGroup[] }) => {
             {/* 批次按鍵組 */}
             <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1">
                 <button 
-                    onClick={handleBatchIncrement}
+                    onClick={() => setIsBatchIncrementModalOpen(true)}
                     className="flex items-center gap-2 px-4 py-1.5 bg-white text-blue-600 rounded-lg text-xs font-black shadow-sm hover:bg-blue-50 transition-all border border-slate-200"
-                    title="根據去年額度自動新增下一年+1天 (上限30天)"
+                    title="根據上一年度自動新增下一年+1天 (上限30天)"
                 >
                     <CalendarPlus size={14} /> 批次增額
                 </button>
@@ -318,6 +322,43 @@ const UserTab = ({ workflowGroups }: { workflowGroups: WorkflowGroup[] }) => {
                           </button>
                           <button onClick={() => { setIsResetPasswordModalOpen(false); setUserToReset(null); }} className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all">取消返回</button>
                       </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- 批次增額確認彈窗 --- */}
+      {isBatchIncrementModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden p-10 text-center animate-in zoom-in duration-300">
+                  <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                      <Rocket size={40} className="animate-pulse" />
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-800 mb-2">確定執行批次增額？</h3>
+                  <div className="space-y-4 mb-8 text-left bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                      <p className="text-sm text-slate-600 font-medium leading-relaxed italic">
+                          此操作將針對所有帳號執行：
+                      </p>
+                      <ul className="text-xs text-slate-500 font-bold space-y-2 list-disc pl-4">
+                          <li>自動尋找每位員工現有的「最後年度」特休紀錄。</li>
+                          <li>為其建立「下一年度」紀錄，天數為 <span className="text-blue-600">上一年度 + 1 天</span>。</li>
+                          <li>單一年度上限為 <span className="text-indigo-700">30 天</span>，達到上限則不再增加。</li>
+                      </ul>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                      <button 
+                          onClick={() => setIsBatchIncrementModalOpen(false)} 
+                          className="py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-all"
+                      >
+                          取消
+                      </button>
+                      <button 
+                          onClick={executeBatchIncrement} 
+                          className="py-3.5 bg-blue-600 text-white rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 active:scale-95 flex items-center justify-center gap-2"
+                      >
+                          {loading ? <RefreshCcw className="animate-spin" size={18}/> : <Check size={18} />}
+                          確認執行
+                      </button>
                   </div>
               </div>
           </div>
@@ -1323,7 +1364,7 @@ export default function AdminPanel() {
     { id: 'backup', label: '備份還原', icon: Database }
   ];
 
-  if (loading) return <div className="p-20 text-center font-bold text-blue-600 animate-pulse">系統加載中...</div>;
+  if (loading && workflowGroups.length === 0) return <div className="p-20 text-center font-bold text-blue-600 animate-pulse">系統加載中...</div>;
   
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
