@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/mockDb';
 import { LeaveRequest, RequestStatus, LeaveType, LeaveCategory, User, ApprovalLog } from '../types';
-import { Search, Filter, Download, X, Save, Calendar, Clock, Upload, Plus, Trash2, AlertTriangle, User as UserIcon, CheckCircle, UserPlus, FileDiff, ArrowRight, Edit, Archive, UserCheck, Timer, ChevronDown } from 'lucide-react';
+import { Search, Filter, Download, X, Save, Calendar, Clock, Upload, Plus, Trash2, AlertTriangle, User as UserIcon, CheckCircle, UserPlus, FileDiff, ArrowRight, Edit, Archive, UserCheck, Timer, ChevronDown, AlertOctagon } from 'lucide-react';
 // @ts-ignore
 import * as XLSX from 'xlsx';
 
@@ -42,7 +42,10 @@ export default function AdminStats() {
   const [availableLeaveTypes, setAvailableLeaveTypes] = useState<LeaveCategory[]>([]);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StatsRow | null>(null);
+  
+  // Batch Delete States
   const [batchDeleteModalOpen, setBatchDeleteModalOpen] = useState(false);
+  const [isDoubleCheckOpen, setIsDoubleCheckOpen] = useState(false); // New state for 2nd confirmation
   const [batchDeleteStart, setBatchDeleteStart] = useState('');
   const [batchDeleteEnd, setBatchDeleteEnd] = useState('');
 
@@ -83,14 +86,35 @@ export default function AdminStats() {
     setFilteredData(res);
   };
 
-  const executeBatchDelete = async () => {
-      if (!window.confirm(`確定刪除此區間資料？`)) return;
+  // Step 1: Triggered by the first modal button
+  const promptBatchDelete = () => {
+      if (!batchDeleteStart || !batchDeleteEnd) {
+          alert('請選擇完整的起始與結束日期');
+          return;
+      }
+      if (batchDeleteEnd < batchDeleteStart) {
+          alert('結束日期不能早於起始日期');
+          return;
+      }
+      setIsDoubleCheckOpen(true);
+  };
+
+  // Step 2: Actually execute the deletion
+  const executeFinalBatchDelete = async () => {
       setLoading(true);
-      const allRequests = await db.getRequests();
-      const remainingRequests = allRequests.filter(r => !(r.startDate >= batchDeleteStart && r.startDate <= batchDeleteEnd));
-      await db.saveRequests(remainingRequests);
-      await loadData();
-      setBatchDeleteModalOpen(false);
+      setIsDoubleCheckOpen(false); // Close confirmation
+      try {
+        // 使用真正的刪除方法，而非 Upsert (避免 Supabase 資料未被移除)
+        await db.deleteRequestsByRange(batchDeleteStart, batchDeleteEnd);
+        await loadData();
+        setBatchDeleteModalOpen(false); // Close main batch modal
+        alert('批量清理完成！');
+      } catch (e: any) {
+        console.error(e);
+        alert('刪除失敗: ' + (e.message || '未知錯誤'));
+      } finally {
+        setLoading(false);
+      }
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -399,7 +423,28 @@ export default function AdminStats() {
                   
                   <div className="flex gap-3 pt-4">
                       <button onClick={() => setBatchDeleteModalOpen(false)} className="flex-1 px-4 py-3 border border-slate-200 rounded-xl font-bold text-slate-500">取消</button>
-                      <button onClick={executeBatchDelete} className="flex-[2] px-4 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-100 hover:bg-red-700 active:scale-[0.98] transition-all">執行批量清理</button>
+                      <button onClick={promptBatchDelete} className="flex-[2] px-4 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-100 hover:bg-red-700 active:scale-[0.98] transition-all">執行批量清理</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Double Check Modal for Batch Delete */}
+      {isDoubleCheckOpen && (
+          <div className="fixed inset-0 bg-black/60 p-4 flex items-center justify-center z-[70] animate-in zoom-in duration-300">
+              <div className="bg-white rounded-[2rem] p-10 max-w-sm w-full text-center shadow-2xl border-4 border-red-50">
+                  <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner animate-pulse">
+                      <AlertOctagon size={40} />
+                  </div>
+                  <h3 className="font-black text-2xl text-slate-800 mb-2">最後警告：無法復原</h3>
+                  <div className="bg-red-50 p-4 rounded-xl border border-red-100 mb-6 text-left">
+                      <p className="text-xs font-bold text-red-800 uppercase mb-2">即將刪除資料範圍：</p>
+                      <p className="text-sm font-black text-slate-700">{batchDeleteStart} ~ {batchDeleteEnd}</p>
+                  </div>
+                  <p className="text-sm text-slate-500 mb-8 font-medium">您確定要永久刪除此範圍內的所有紀錄嗎？此動作將立即生效且不可逆轉。</p>
+                  <div className="flex flex-col gap-3">
+                      <button onClick={executeFinalBatchDelete} className="w-full py-3.5 bg-red-600 text-white rounded-2xl font-black hover:bg-red-700 transition-all shadow-xl shadow-red-200 active:scale-95">確認並執行刪除</button>
+                      <button onClick={() => setIsDoubleCheckOpen(false)} className="w-full py-3.5 bg-white border-2 border-slate-200 rounded-2xl font-bold text-slate-500 hover:bg-slate-50 transition-all">取消返回</button>
                   </div>
               </div>
           </div>

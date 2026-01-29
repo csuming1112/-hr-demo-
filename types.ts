@@ -1,5 +1,4 @@
 
-
 export enum UserRole {
   ADMIN = 'ADMIN',
   CHAIRMAN = 'CHAIRMAN',
@@ -169,6 +168,22 @@ export interface OvertimeSettlementRecord {
   payAuth?: AuthSignature;
 }
 
+// 新增：加班核對明細紀錄 (對應 overtime_check)
+export interface OvertimeCheck {
+  id: string;
+  requestId: string;
+  userId: string;
+  year: number;
+  month: number;
+  actualStartDate: string;
+  actualEndDate: string;
+  actualStartTime: string;
+  actualEndTime: string;
+  actualDuration: number;
+  isVerified: boolean;
+  updatedAt: string;
+}
+
 export interface LeaveRequest {
   id: string;
   userId: string;
@@ -190,6 +205,7 @@ export interface LeaveRequest {
   currentStep: number;
   stepApprovedBy: string[];
   totalSteps: number;
+  // 這些欄位保留作為前端 UI 顯示使用，實際儲存位置改為 overtime_check
   actualStartDate?: string;
   actualEndDate?: string;
   actualStartTime?: string;
